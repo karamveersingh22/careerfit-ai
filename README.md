@@ -1,5 +1,7 @@
 # CareerFit AI
 
+Repository: https://github.com/karamveersingh22/careerfit-ai
+
 CareerFit AI compares a résumé PDF with a target job-description PDF. The
 project is being built in independently testable parts so that document
 handling, structured extraction, scoring, retrieval, and presentation remain
