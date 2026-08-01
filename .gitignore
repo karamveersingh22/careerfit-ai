@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+.streamlit/secrets.toml
+
+# User documents and local application data must stay private.
+uploads/
+data/chroma/
+*.log
+
+# The two supplied documents are local test inputs, not project fixtures.
+26 july 26 resume.pdf
+Internship JD (1).pdf
+
+# Generated scratch files.
+tmp/
+
