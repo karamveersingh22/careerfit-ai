@@ -73,7 +73,7 @@ class GeminiGuidanceGenerator:
     def __init__(
         self,
         api_key: str,
-        model: str = "gemini-2.5-flash",
+        model: str = "gemini-3.5-flash-lite",
         client=None,
         validation_attempts: int = 2,
     ) -> None:
@@ -132,7 +132,10 @@ class GeminiGuidanceGenerator:
         if code in (401, 403) or "permission_denied" in message:
             reason = "The Gemini API key is invalid or lacks model permission."
         elif code == 404 or "not_found" in message:
-            reason = f"The configured model `{self.model}` is not available."
+            reason = (
+                f"The configured model `{self.model}` cannot serve this API "
+                "project. Select a currently available model in Gemini settings."
+            )
         elif code == 429 or "resource_exhausted" in message:
             reason = "The Gemini API quota or rate limit has been reached."
         else:

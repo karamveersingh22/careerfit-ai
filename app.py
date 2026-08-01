@@ -134,7 +134,10 @@ st.write(
 )
 
 api_key = read_setting("GEMINI_API_KEY")
-model_name = read_setting("GEMINI_MODEL", "gemini-2.5-flash") or "gemini-2.5-flash"
+model_name = (
+    read_setting("GEMINI_MODEL", "gemini-3.5-flash-lite")
+    or "gemini-3.5-flash-lite"
+)
 embedding_model = (
     read_setting("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2")
     or "gemini-embedding-2"

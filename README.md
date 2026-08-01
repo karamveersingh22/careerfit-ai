@@ -32,7 +32,7 @@ Part 2 adds:
 - one retry only when Gemini returns invalid structured data; and
 - a provider-data-transfer confirmation before an API request.
 
-The default model is `gemini-2.5-flash`. Set `GEMINI_MODEL` to change it without
+The default model is `gemini-3.5-flash-lite`. Set `GEMINI_MODEL` to change it without
 editing application code.
 
 Part 3 adds a deterministic scoring layer. Gemini supplies structured evidence,
@@ -114,7 +114,7 @@ both settings to prevent incompatible vectors from being mixed.
 
 ```toml
 GEMINI_API_KEY = "your-private-key"
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-3.5-flash-lite"
 ```
 
 5. Restart Streamlit after changing secrets.
