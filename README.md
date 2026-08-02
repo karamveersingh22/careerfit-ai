@@ -123,6 +123,22 @@ Never paste the key into `app.py`, commit `secrets.toml`, or send the key throug
 chat. For deployments, set `GEMINI_API_KEY` in the hosting provider's secret or
 environment-variable settings instead.
 
+## Public access modes
+
+The deployed app offers two Gemini access modes:
+
+- **Shared demo:** uses the owner's hidden `GEMINI_API_KEY` for up to three
+  analysis attempts per Streamlit browser session.
+- **Use my Gemini key:** the visitor pastes a password-masked key from
+  [Google AI Studio](https://aistudio.google.com/apikey). The key stays in that
+  temporary session and is never written to GitHub, ChromaDB, application files,
+  or Streamlit Secrets.
+
+The modes never fall back to one another. An invalid or missing visitor key will
+not consume the shared demo key. The three-analysis session limit is a lightweight
+quota guard, not account-level authentication; a future server-side rate limiter
+is still recommended for a high-traffic deployment.
+
 ## Run locally
 
 Create a virtual environment, install the requirements, and start Streamlit:

@@ -8,6 +8,13 @@ from typing import Any
 
 import streamlit as st
 
+from careerfit.access import (
+    AccessConfigurationError,
+    AccessMode,
+    DEMO_ANALYSIS_LIMIT,
+    remaining_demo_analyses,
+    resolve_gemini_key,
+)
 from careerfit.document_engine import PDFValidationError, extract_pdf
 from careerfit.evaluation import EvaluationBand, run_synthetic_evaluation
 from careerfit.guidance import GeminiGuidanceGenerator, GuidanceError
@@ -34,6 +41,9 @@ st.session_state.setdefault("rag_result", None)
 st.session_state.setdefault("rag_error", None)
 st.session_state.setdefault("guidance_result", None)
 st.session_state.setdefault("guidance_error", None)
+st.session_state.setdefault("access_mode", AccessMode.SHARED_DEMO.value)
+st.session_state.setdefault("visitor_gemini_key", "")
+st.session_state.setdefault("demo_analyses_used", 0)
 
 
 def read_setting(name: str, default: Any = None) -> Any:
@@ -46,29 +56,6 @@ def read_setting(name: str, default: Any = None) -> Any:
         return st.secrets.get(name, default)
     except FileNotFoundError:
         return default
-
-
-@st.cache_resource
-def get_profile_extractor(api_key: str, model: str) -> GeminiProfileExtractor:
-    """Reuse the provider client while keeping it outside per-user state."""
-
-    return GeminiProfileExtractor(api_key=api_key, model=model)
-
-
-@st.cache_resource
-def get_guidance_generator(api_key: str, model: str) -> GeminiGuidanceGenerator:
-    """Reuse the guidance provider client across Streamlit reruns."""
-
-    return GeminiGuidanceGenerator(api_key=api_key, model=model)
-
-
-@st.cache_resource
-def get_embedding_client(
-    api_key: str, model: str, dimension: int
-) -> GeminiEmbeddingClient:
-    return GeminiEmbeddingClient(
-        api_key=api_key, model=model, dimension=dimension
-    )
 
 
 @st.cache_resource
@@ -99,6 +86,13 @@ def clear_analysis_outputs() -> None:
         "guidance_error",
     ):
         st.session_state[key] = None
+
+
+def forget_visitor_key() -> None:
+    """Remove a visitor credential and results derived from that credential."""
+
+    st.session_state["visitor_gemini_key"] = ""
+    clear_analysis_outputs()
 
 
 def render_document_summary(document: ExtractedDocument, label: str) -> None:
@@ -133,7 +127,7 @@ st.write(
     "PDFs, preserves page evidence, and extracts validated structured profiles."
 )
 
-api_key = read_setting("GEMINI_API_KEY")
+shared_api_key = read_setting("GEMINI_API_KEY")
 model_name = (
     read_setting("GEMINI_MODEL", "gemini-3.5-flash-lite")
     or "gemini-3.5-flash-lite"
@@ -145,21 +139,71 @@ embedding_model = (
 embedding_dimension = int(read_setting("GEMINI_EMBEDDING_DIMENSION", 768))
 
 with st.sidebar:
+    st.header("AI access")
+    access_mode_value = st.segmented_control(
+        "Choose access mode",
+        [mode.value for mode in AccessMode],
+        key="access_mode",
+        width="stretch",
+    ) or AccessMode.SHARED_DEMO.value
+    access_mode = AccessMode(access_mode_value)
+
+    if access_mode == AccessMode.SHARED_DEMO:
+        demo_remaining = remaining_demo_analyses(
+            st.session_state["demo_analyses_used"]
+        )
+        st.metric(
+            "Shared demo analyses remaining",
+            f"{demo_remaining}/{DEMO_ANALYSIS_LIMIT}",
+            border=True,
+        )
+        st.caption(
+            "Uses CareerFit's hidden Gemini key. The limit applies to this "
+            "browser session and protects the shared free quota."
+        )
+        if not shared_api_key:
+            st.warning(
+                "The shared demo is temporarily unavailable.",
+                icon=":material/warning:",
+            )
+    else:
+        st.link_button(
+            "Get a Gemini API key",
+            "https://aistudio.google.com/apikey",
+            icon=":material/open_in_new:",
+            width="stretch",
+        )
+        st.text_input(
+            "Gemini API key",
+            type="password",
+            key="visitor_gemini_key",
+            placeholder="Paste your key here",
+            help=(
+                "Kept only in this Streamlit session. It is not written to "
+                "GitHub, ChromaDB, application files, or Streamlit Secrets."
+            ),
+        )
+        st.button(
+            "Forget my key",
+            icon=":material/key_off:",
+            disabled=not bool(st.session_state["visitor_gemini_key"]),
+            width="stretch",
+            on_click=forget_visitor_key,
+        )
+
+    st.divider()
     st.header("Parts 1–6")
     st.info(
         "Only text-based PDFs are supported for now. Files are processed in "
         "memory and are not saved by this application."
     )
     st.caption("Maximum file size: 10 MB · Maximum pages: 50 per PDF")
-    if api_key:
-        st.success("Gemini is configured", icon=":material/check_circle:")
+    if shared_api_key or access_mode == AccessMode.VISITOR_KEY:
+        st.success("Gemini access selected", icon=":material/check_circle:")
         st.caption(f"Structured extraction model: `{model_name}`")
         st.caption(
             f"Embedding model: `{embedding_model}` ({embedding_dimension} dimensions)"
         )
-    else:
-        st.warning("Gemini API key is not configured", icon=":material/key:")
-        st.caption("Add `GEMINI_API_KEY` to `.streamlit/secrets.toml`.")
     st.warning(
         "Gemini free-tier requests may be used by Google to improve its products. "
         "Use synthetic documents while developing and review provider terms before "
@@ -228,13 +272,14 @@ if submitted:
         st.warning("Upload both documents to continue.")
     elif not provider_consent:
         st.warning("Confirm the Gemini data-transfer notice before continuing.")
-    elif not api_key:
-        st.error(
-            "Gemini is not configured. Add your API key to "
-            "`.streamlit/secrets.toml`, then restart the app."
-        )
     else:
         try:
+            api_key = resolve_gemini_key(
+                access_mode,
+                shared_key=shared_api_key,
+                visitor_key=st.session_state["visitor_gemini_key"],
+                demo_analyses_used=st.session_state["demo_analyses_used"],
+            )
             with st.spinner("Extracting profiles and building the evidence index..."):
                 resume_document = process_upload(
                     resume_upload, DocumentType.RESUME
@@ -242,7 +287,11 @@ if submitted:
                 jd_document = process_upload(
                     jd_upload, DocumentType.JOB_DESCRIPTION
                 )
-                extractor = get_profile_extractor(api_key, model_name)
+                if access_mode == AccessMode.SHARED_DEMO:
+                    # Reserve the attempt immediately before the first billable
+                    # request so provider failures cannot create free retries.
+                    st.session_state["demo_analyses_used"] += 1
+                extractor = GeminiProfileExtractor(api_key=api_key, model=model_name)
                 profile_result = extractor.extract_pair(
                     resume_document, jd_document
                 )
@@ -270,8 +319,10 @@ if submitted:
                         api_key=api_key,
                         embedding_model=embedding_model,
                         embedding_dimension=embedding_dimension,
-                        embedding_client=get_embedding_client(
-                            api_key, embedding_model, embedding_dimension
+                        embedding_client=GeminiEmbeddingClient(
+                            api_key=api_key,
+                            model=embedding_model,
+                            dimension=embedding_dimension,
                         ),
                         vector_store=get_vector_store(
                             embedding_model, embedding_dimension
@@ -289,8 +340,8 @@ if submitted:
                 except RagError as exc:
                     rag_error = str(exc)
                 try:
-                    guidance_result = get_guidance_generator(
-                        api_key, model_name
+                    guidance_result = GeminiGuidanceGenerator(
+                        api_key=api_key, model=model_name
                     ).generate(
                         profile_result,
                         score_result,
@@ -307,7 +358,12 @@ if submitted:
                 st.session_state["rag_error"] = rag_error
                 st.session_state["guidance_result"] = guidance_result
                 st.session_state["guidance_error"] = guidance_error
-        except (PDFValidationError, ProfileExtractionError, RagError) as exc:
+        except (
+            AccessConfigurationError,
+            PDFValidationError,
+            ProfileExtractionError,
+            RagError,
+        ) as exc:
             st.error(str(exc))
 
 if st.session_state["resume_document"] and st.session_state["jd_document"]:

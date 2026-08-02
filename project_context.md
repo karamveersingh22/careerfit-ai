@@ -29,7 +29,8 @@ Verified live on 2026-08-02:
 - The upload form is visible.
 - The sidebar shows Parts 1-6.
 - The Part 6 benchmark is available without using Gemini.
-- The deployed app currently says `Gemini API key is not configured`.
+- The app supports a three-analysis shared Gemini demo per browser session.
+- Visitors can instead supply a temporary Gemini API key for their own usage.
 
 To enable live PDF analysis, add these values in Streamlit Community Cloud under **App settings -> Secrets**:
 
@@ -127,6 +128,7 @@ careerfit-ai/
 |   |-- secrets.toml.example       Safe configuration template
 |   `-- secrets.toml               Local private secrets; never committed
 |-- careerfit/
+|   |-- access.py                  Demo limits and credential-mode isolation
 |   |-- document_engine.py         PDF validation, cleanup, page extraction
 |   |-- models.py                  Pydantic contracts for every application layer
 |   |-- prompts.py                 Structured profile-extraction prompts
@@ -383,8 +385,8 @@ This benchmark proves internal consistency on controlled fixtures. It does not p
 
 The application currently renders:
 
-1. Sidebar configuration and privacy notices.
-2. Part 6 quality benchmark.
+1. Sidebar access-mode selector, temporary visitor-key input, and privacy notices.
+2. Shared-demo counter and Part 6 quality benchmark.
 3. Two PDF upload controls and provider consent.
 4. Page/character extraction summaries and optional text previews.
 5. Validated résumé and job profiles.
@@ -400,7 +402,7 @@ Settings are read from environment variables first and Streamlit secrets second.
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `GEMINI_API_KEY` | None | Required private Gemini credential |
+| `GEMINI_API_KEY` | None | Owner credential for the shared demo only |
 | `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Structured extraction and guidance |
 | `GEMINI_EMBEDDING_MODEL` | `gemini-embedding-2` | Chunk and query embeddings |
 | `GEMINI_EMBEDDING_DIMENSION` | `768` | Vector dimension and collection identity |
@@ -464,7 +466,7 @@ Run all tests:
 Current baseline:
 
 ```text
-63 tests passed
+68 tests passed
 ```
 
 Run only the Part 6 benchmark tests:
@@ -479,7 +481,7 @@ Run the benchmark as a console report:
 .\.venv\Scripts\python.exe -m careerfit.evaluation
 ```
 
-Test categories cover PDF validation, models, structured extraction, skill matching, scoring, chunking, embeddings, Chroma filtering/deletion, RAG merging, presentation rows, grounded guidance, evaluation, and Streamlit startup.
+Test categories cover access-mode isolation, PDF validation, models, structured extraction, skill matching, scoring, chunking, embeddings, Chroma filtering/deletion, RAG merging, presentation rows, grounded guidance, evaluation, and Streamlit startup.
 
 Tests use fake provider clients or synthetic data unless an explicit manual live-provider test is performed. Normal automated tests do not spend Gemini quota.
 
@@ -538,8 +540,9 @@ Free Community Cloud apps can hibernate after inactivity. Visiting the URL wakes
 - Full document text is not intentionally logged.
 - Provider exceptions are converted into safe user-facing messages.
 - Free-tier Gemini content may be used by Google to improve its products; the UI warns users.
-- A public deployment allows visitors to consume the owner's Gemini quota even though they cannot see the key.
-- Keep the app private or add access/rate controls before sharing it widely.
+- Shared-demo visitors can consume at most three analysis attempts in one Streamlit session.
+- Visitor-provided Gemini keys are password-masked, session-only, never cached as shared resources, and never silently replaced by the owner's key.
+- The session limit is a lightweight guard that can be bypassed with a new browser session; add persistent server-side rate limiting before high-traffic promotion.
 - Review Google's current retention and usage terms before processing real personal résumés.
 
 ## 15. Failure behaviour
@@ -572,7 +575,7 @@ Free Community Cloud apps can hibernate after inactivity. Visiting the URL wakes
 Recommended next improvements, in practical order:
 
 1. Configure and verify production Gemini secrets.
-2. Add deployment access control or per-user rate limiting.
+2. Add persistent server-side per-user or per-IP rate limiting.
 3. Add local OCR fallback for scanned PDFs.
 4. Replace local Chroma with a managed vector store for durable multi-user deployment.
 5. Add explicit analysis cleanup on session expiration.
